@@ -29,7 +29,7 @@ UINT64 GAg_correct_forward = 0;
 UINT64 GAg_correct_backward = 0;
 UINT64 gshare_correct_forward = 0;
 UINT64 gshare_correct_backward = 0;
-
+uint BHR;
 /* Command line switches */
 KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "", "specify file name for HW1 output");
 KNOB<UINT64> KnobFastForward(KNOB_MODE_WRITEONCE, "pintool", "f", "0", "number of instructions to fast forward in billions");
@@ -142,35 +142,29 @@ bool SAgPredictor::UpdateAndPredicate(ADDRINT pc,bool branch_taken){
 
 class GAgPredictor{
 public:
-	GAgPredictor(){ BHT = 0;}
 	bool UpdateAndPredicate(bool branch_taken);
 private:
-	uint BHT;
 	ThreeBitSaturationCounter PHT[WIDTH];
 };
 
 bool GAgPredictor::UpdateAndPredicate(bool branch_taken){
-	int offset = (BHT%WIDTH);
+	int offset = (BHR%WIDTH);
 	bool predi = PHT[offset].prediction();
 	PHT[offset].Update(branch_taken);
-	BHT= (BHT << 1) + branch_taken;
 	return predi;
 }
 
 class gsharePredictor{
 public:
-	gsharePredictor(){ BHT = 0;}
 	bool UpdateAndPredicate(ADDRINT pc,bool branch_taken);
 private:
-	uint BHT;
 	ThreeBitSaturationCounter PHT[WIDTH];
 };
 
 bool gsharePredictor::UpdateAndPredicate(ADDRINT pc, bool branch_taken){
-	int offset = (BHT^pc)%WIDTH;
+	int offset = (BHR^pc)%WIDTH;
 	bool predi = PHT[offset].prediction();
 	PHT[offset].Update(branch_taken);
-	BHT= (BHT << 1) + branch_taken;
 	return predi;
 }
 
@@ -281,7 +275,7 @@ VOID BranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
 	sagPredictor(pc,branch_taken,forward);
 	gagPredictor(branch_taken,forward);
 	gshare_Predictor(pc,branch_taken,forward);
-	
+	BHR= (BHR << 1) + branch_taken;
 }
 
 /* Instruction instrumentation routine */
