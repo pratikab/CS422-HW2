@@ -3,6 +3,7 @@
 #include <set>
 #include "pin.H"
 #include <cstdlib>
+#include "saturation_counter.h"
 
 /* Macro and type definitions */
 #define BILLION 1000000000
