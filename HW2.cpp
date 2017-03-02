@@ -7,6 +7,8 @@
 #define BILLION 1000000000
 #define WIDTH 512
 #define BHT_W 1024
+#define BTB_HEIGHT 128
+#define BTB_WIDTH 4
 /* Global variables */
 std::ostream * out = &cerr;
 
@@ -43,8 +45,20 @@ bool gshare_output = false;
 /* Command line switches */
 KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "", "specify file name for HW1 output");
 KNOB<UINT64> KnobFastForward(KNOB_MODE_WRITEONCE, "pintool", "f", "0", "number of instructions to fast forward in billions");
-enum TwoBitState {STRONGLY_NOT_TAKEN, WEAKLY_NOT_TAKEN, WEAKLY_TAKEN,
-    STRONGLY_TAKEN};
+
+struct BTB
+{
+	bool valid;
+	ADDRINT tag;
+	ADDRINT target;
+	int status;
+};
+
+BTB **BTB_1;
+BTB **BTB_2;
+
+enum TwoBitState {STRONGLY_NOT_TAKEN, WEAKLY_NOT_TAKEN, WEAKLY_TAKEN, STRONGLY_TAKEN};
+
 class TwoBitSaturationCounter{
 public:
 	TwoBitSaturationCounter(){counter = STRONGLY_NOT_TAKEN;}
@@ -346,7 +360,7 @@ void hybrid2Predictor(bool branch_taken,bool forward){
 	else if((predicate == branch_taken)&&(!forward)) hybrid2_correct_backward++;
 }
 
-VOID BranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
+VOID ConditionalBranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
 {
 	branches_executed++;
 	bool forward = false;
@@ -369,6 +383,9 @@ VOID BranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
 	BHR= (BHR << 1) + branch_taken;
 }
 
+VOID IndirectCallAnalysis(ADDRINT pc, ADDRINT target_addr, ADDRINT next_pc){
+
+}
 /* Instruction instrumentation routine */
 VOID Instruction(INS ins, VOID *v)
 {
@@ -378,10 +395,18 @@ VOID Instruction(INS ins, VOID *v)
 	
 	if (INS_IsBranch(ins) && INS_HasFallThrough(ins)){
 		INS_InsertIfCall(ins, IPOINT_BEFORE, (AFUNPTR) FastForward, IARG_END);
-		INS_InsertThenCall(ins, IPOINT_BEFORE, (AFUNPTR) BranchAnalysis,
+		INS_InsertThenPredicatedCall(ins, IPOINT_BEFORE, (AFUNPTR) ConditionalBranchAnalysis,
 			IARG_INST_PTR, 
 			IARG_BRANCH_TAKEN,
 			IARG_BRANCH_TARGET_ADDR,
+			IARG_END);
+	}
+	if(INS_Category(ins) == XED_CATEGORY_CALL && !INS_IsDirectCall(ins)){
+		INS_InsertIfCall(ins,IPOINT_BEFORE,(AFUNPTR)FastForward,IARG_END);
+		INS_InsertThenPredicatedCall(ins,IPOINT_BEFORE,(AFUNPTR)IndirectCallAnalysis,
+			IARG_INST_PTR,
+			IARG_BRANCH_TARGET_ADDR,
+			IARG_ADDRINT,INS_NextAddress(ins),
 			IARG_END);
 	}
 
@@ -407,6 +432,21 @@ int main(int argc, char *argv[])
 	maxIns = fastForwardIns + BILLION;
 	string fileName = KnobOutputFile.Value();
 
+	BTB_1 = (BTB **) malloc(BTB_HEIGHT * sizeof(BTB *));
+	BTB_2 = (BTB **) malloc(BTB_HEIGHT * sizeof(BTB *));
+
+	for(int i = 0;i < BTB_HEIGHT;i++){
+		BTB_1[i] = (BTB*) malloc(BTB_WIDTH * sizeof(BTB));
+		BTB_2[i] = (BTB*) malloc(BTB_WIDTH * sizeof(BTB));
+	}
+	for(int i=0 ; i < BTB_HEIGHT ; i++){
+		for(int j=0 ; j < BTB_WIDTH ; j++){
+			BTB_1[i][j].valid = BTB_2[i][j].valid = 0;
+			BTB_1[i][j].tag = BTB_2[i][j].tag = 0;
+			BTB_1[i][j].target = BTB_2[i][j].target  = 0;
+			BTB_1[i][j].status = BTB_2[i][j].status = 0;
+		}
+	}
 	if (!fileName.empty())
 		out = new std::ofstream(fileName.c_str());
 
