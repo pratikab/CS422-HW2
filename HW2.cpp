@@ -27,6 +27,9 @@ UINT64 SAg_correct_forward = 0;
 UINT64 SAg_correct_backward = 0;
 UINT64 GAg_correct_forward = 0;
 UINT64 GAg_correct_backward = 0;
+UINT64 gshare_correct_forward = 0;
+UINT64 gshare_correct_backward = 0;
+
 /* Command line switches */
 KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "", "specify file name for HW1 output");
 KNOB<UINT64> KnobFastForward(KNOB_MODE_WRITEONCE, "pintool", "f", "0", "number of instructions to fast forward in billions");
@@ -154,6 +157,23 @@ bool GAgPredictor::UpdateAndPredicate(bool branch_taken){
 	return predi;
 }
 
+class gsharePredictor{
+public:
+	gsharePredictor(){ BHT = 0;}
+	bool UpdateAndPredicate(ADDRINT pc,bool branch_taken);
+private:
+	uint BHT;
+	ThreeBitSaturationCounter PHT[WIDTH];
+};
+
+bool gsharePredictor::UpdateAndPredicate(ADDRINT pc, bool branch_taken){
+	int offset = (BHT^pc)%WIDTH;
+	bool predi = PHT[offset].prediction();
+	PHT[offset].Update(branch_taken);
+	BHT= (BHT << 1) + branch_taken;
+	return predi;
+}
+
 /* Utilities */
 
 /* Print out help message. */
@@ -198,6 +218,8 @@ void stats(void){
 	stat_temp(SAg_correct_forward,SAg_correct_backward);
 	*out << "D. ";
 	stat_temp(GAg_correct_forward,GAg_correct_backward);
+	*out << "E. ";
+	stat_temp(gshare_correct_forward,gshare_correct_backward);
     *out << "===============================================" << endl;
 }
 
@@ -210,6 +232,8 @@ VOID StatDump(void)
 BimodalCounter Bimodalcounter;
 SAgPredictor SAgcounter;
 GAgPredictor GAgcounter;
+gsharePredictor gshare_counter;
+
 
 void FNBT_Predictor(bool branch_taken, bool forward){
 	bool prediction = !forward;
@@ -234,7 +258,11 @@ void gagPredictor(bool branch_taken,bool forward){
 	if(( predicate == branch_taken)&&(forward)) GAg_correct_forward++;
 	else if((predicate == branch_taken)&&(!forward)) GAg_correct_backward++;
 }
-
+void gshare_Predictor(ADDRINT pc, bool branch_taken,bool forward){
+	bool predicate = gshare_counter.UpdateAndPredicate(pc, branch_taken);
+	if(( predicate == branch_taken)&&(forward)) gshare_correct_forward ++;
+	else if((predicate == branch_taken)&&(!forward)) gshare_correct_backward++;
+}
 
 VOID BranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
 {
@@ -252,6 +280,7 @@ VOID BranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
 	Bimodal_predictor(pc,branch_taken,forward);
 	sagPredictor(pc,branch_taken,forward);
 	gagPredictor(branch_taken,forward);
+	gshare_Predictor(pc,branch_taken,forward);
 	
 }
 
