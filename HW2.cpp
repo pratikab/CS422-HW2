@@ -31,6 +31,10 @@ UINT64 gshare_correct_forward = 0;
 UINT64 gshare_correct_backward = 0;
 UINT64 saggag_correct_forward = 0;
 UINT64 saggag_correct_backward = 0;
+UINT64 hybrid1_correct_forward = 0;
+UINT64 hybrid1_correct_backward = 0;
+UINT64 hybrid2_correct_forward = 0;
+UINT64 hybrid2_correct_backward = 0;
 uint BHR;
 bool sag_output = false;
 bool gag_output = false;
@@ -208,7 +212,9 @@ void stats(void){
 	*out << "Number of Instructions executed " << icount << endl;
 	*out << "Actual Instructions executed " << ins_exec << endl;
 	*out << "Number of branches executed "<< branches_executed << endl;
-	*out << "MisPrediction Table : " << endl;
+	*out << "===============================================" << endl;
+	*out << "MisPrediction Table [PART - A]: " << endl;
+	*out << "===============================================" << endl;
 	*out << "   Overall    " << "Forward   " << "Backward  " << endl;
 	*out << "A. ";
 	stat_temp(FNBT_correct_forward,FNBT_correct_backward);
@@ -222,6 +228,10 @@ void stats(void){
 	stat_temp(gshare_correct_forward,gshare_correct_backward);
 	*out << "F. ";
 	stat_temp(saggag_correct_forward,saggag_correct_backward);
+	*out << "G1.";
+	stat_temp(hybrid1_correct_forward,hybrid1_correct_backward);
+	*out << "G2.";
+	stat_temp(hybrid2_correct_forward,hybrid2_correct_backward);
     *out << "===============================================" << endl;
 }
 
@@ -236,6 +246,9 @@ SAgPredictor SAgcounter;
 GAgPredictor GAgcounter;
 gsharePredictor gshare_counter;
 TwoBitSaturationCounter SAg_GAg_Meta[512];
+TwoBitSaturationCounter SG_HYBRID[512];
+TwoBitSaturationCounter Gg_HYBRID[512];
+TwoBitSaturationCounter gS_HYBRID[512];
 
 void FNBT_Predictor(bool branch_taken, bool forward){
 	bool prediction = !forward;
@@ -284,8 +297,53 @@ void gag_sag_predictor(bool branch_taken,bool forward){
 	}
 	if(( predicate == branch_taken)&&(forward)) saggag_correct_forward ++;
 	else if((predicate == branch_taken)&&(!forward)) saggag_correct_backward++;
-	
+}
+void hybrid1Predictor(bool branch_taken,bool forward){
+	bool predicate = false;
+	if(sag_output == gag_output) predicate = sag_output;
+	else if(sag_output == gshare_output) predicate = sag_output;
+	else predicate = gag_output;
+	if(( predicate == branch_taken)&&(forward)) hybrid1_correct_forward++;
+	else if((predicate == branch_taken)&&(!forward)) hybrid1_correct_backward++;
+}
 
+void hybrid2Predictor(bool branch_taken,bool forward){
+	bool predicate = false;
+	int offset = (BHR%WIDTH);
+	bool SG_pred = SG_HYBRID[offset].prediction();
+	bool Gg_pred = Gg_HYBRID[offset].prediction();
+	bool gS_pred = Gg_HYBRID[offset].prediction();
+	/* For TTT i.e all tables return true and FFF selecting SAg output*/
+	if(SG_pred){
+		if(Gg_pred){
+			predicate = sag_output;
+		}
+		else{
+			if(gS_pred)predicate = gshare_output;
+			else predicate = sag_output;
+		} 
+	}
+	else{
+		if(Gg_pred) predicate = gag_output;
+		else {
+			if(gS_pred) predicate = gshare_output;
+			else predicate = sag_output;
+		} 
+	}
+	if(sag_output != gag_output){
+		if(branch_taken == sag_output) SG_HYBRID[offset].Update(true);
+		else SG_HYBRID[offset].Update(false);
+	}
+	if(sag_output != gshare_output){
+		if(branch_taken == gshare_output) gS_HYBRID[offset].Update(true);
+		else gS_HYBRID[offset].Update(false);
+	}
+	if(gag_output != gshare_output){
+		if(branch_taken == gag_output) Gg_HYBRID[offset].Update(true);
+		else Gg_HYBRID[offset].Update(false);
+	}
+	if(( predicate == branch_taken)&&(forward)) hybrid2_correct_forward++;
+	else if((predicate == branch_taken)&&(!forward)) hybrid2_correct_backward++;
 }
 
 VOID BranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
@@ -306,6 +364,8 @@ VOID BranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
 	gag_output = gagPredictor(branch_taken,forward);
 	gshare_output = gshare_Predictor(pc,branch_taken,forward);
 	gag_sag_predictor(branch_taken,forward);
+	hybrid1Predictor(branch_taken,forward);
+	hybrid2Predictor(branch_taken,forward);
 	BHR= (BHR << 1) + branch_taken;
 }
 
