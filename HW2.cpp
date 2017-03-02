@@ -13,10 +13,15 @@ typedef std::set<ADDRINT> FOOTPRINT;
 
 UINT64 icount = 0; //number of dynamically executed instructions
 UINT64 maxIns = 0;
+UINT64 ins_exec = 0;
 UINT64 fastForwardIns = 0;
 UINT64 branches_executed = 0;
-UINT64 FNBT_correct = 0;
-UINT64 bimodal_correct = 0;
+UINT64 forward_branches = 0;
+UINT64 backward_branches = 0;
+UINT64 FNBT_correct_forward = 0;
+UINT64 bimodal_correct_forward = 0;
+UINT64 FNBT_correct_backward = 0;
+UINT64 bimodal_correct_backward = 0;
 /* Command line switches */
 KNOB<string> KnobOutputFile(KNOB_MODE_WRITEONCE, "pintool", "o", "", "specify file name for HW1 output");
 KNOB<UINT64> KnobFastForward(KNOB_MODE_WRITEONCE, "pintool", "f", "0", "number of instructions to fast forward in billions");
@@ -101,32 +106,40 @@ ADDRINT Terminate(void)
 {
         return (icount >= maxIns);
 }
+
+void stat_temp(int fc,int bc){
+	*out << (double)(branches_executed - (fc + bc))*100/branches_executed << "    " << (double)(forward_branches - fc)*100/forward_branches << "    " << (double)(backward_branches - bc)*100/backward_branches << endl;
+}
 void stats(void){
+	ins_exec = (icount - fastForwardIns);
 	*out << "===============================================" << endl;
 	*out << "Number of Instructions executed " << icount << endl;
-	*out << "Actual Instructions executed " << (icount - fastForwardIns) << endl;
+	*out << "Actual Instructions executed " << ins_exec << endl;
 	*out << "Number of branches executed "<< branches_executed << endl;
-	*out << "Number of branches correctly predicted by FNBT "<< FNBT_correct << endl;
-	*out << "Number of branches correctly predicted by Bimodal Predictor "<< bimodal_correct << endl;
+	*out << "MisPrediction Table : " << endl;
+	*out << "   Overall    " << "Forward   " << "Backward  " << endl;
+	*out << "A. ";
+	stat_temp(FNBT_correct_forward,FNBT_correct_backward);
+	*out << "B. ";
+	stat_temp(bimodal_correct_forward,bimodal_correct_backward);
     *out << "===============================================" << endl;
 }
+
 VOID StatDump(void)
 {	
 	stats();
 	exit(0);
 }
 BimodalCounter Bimodalcounter;
-void FNBT_Predictor(ADDRINT pc, bool branch_taken, ADDRINT target_addr){
-	bool prediction;
-	if(target_addr < pc) prediction = TRUE;
-	else prediction = FALSE;
-	if(prediction == branch_taken){
-		FNBT_correct++;
-	}
+void FNBT_Predictor(bool branch_taken, bool forward){
+	bool prediction = !forward;
+	if((prediction == branch_taken)&&(forward)) FNBT_correct_forward++;
+	else if ((prediction == branch_taken)&&(!forward)) FNBT_correct_backward++;
 }
 
-void Bimodal_predictor(ADDRINT pc, bool branch_taken){
-	if(Bimodalcounter.pred(pc) == branch_taken) bimodal_correct++;
+void Bimodal_predictor(ADDRINT pc, bool branch_taken,bool forward){
+	if((Bimodalcounter.pred(pc) == branch_taken)&&(forward)) bimodal_correct_forward++;
+	else if((Bimodalcounter.pred(pc) == branch_taken)&&(!forward)) bimodal_correct_backward++;
 	Bimodalcounter.Update(pc,branch_taken);
 }
 
@@ -134,8 +147,17 @@ void Bimodal_predictor(ADDRINT pc, bool branch_taken){
 VOID BranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_addr)
 {
 	branches_executed++;
-	FNBT_Predictor(pc,branch_taken,target_addr);
-	Bimodal_predictor(pc,branch_taken);
+	bool forward = false;
+	if(target_addr > pc) {
+		forward = true;
+		forward_branches++;
+	}
+	else{
+		forward = false;
+		backward_branches++;
+	}
+	FNBT_Predictor(branch_taken,forward);
+	Bimodal_predictor(pc,branch_taken,forward);
 	
 }
 
@@ -175,7 +197,6 @@ int main(int argc, char *argv[])
 	/* Set number of instructions to fast forward and simulate */
 	fastForwardIns = KnobFastForward.Value() * BILLION;
 	maxIns = fastForwardIns + BILLION;
-
 	string fileName = KnobOutputFile.Value();
 
 	if (!fileName.empty())
