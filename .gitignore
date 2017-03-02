@@ -1,2 +1,3 @@
 /obj-intel64
-output.out
+/obj-ia32
+*.out
