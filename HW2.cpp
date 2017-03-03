@@ -38,8 +38,10 @@ UINT64 hybrid1_correct_backward = 0;
 UINT64 hybrid2_correct_forward = 0;
 UINT64 hybrid2_correct_backward = 0;
 UINT64 IndirectCall = 0;
-UINT64 MispredBTB = 0;
-UINT64 BTBmiss = 0;
+UINT64 MispredBTB1 = 0;
+UINT64 BTBmiss1 = 0;
+UINT64 MispredBTB2 = 0;
+UINT64 BTBmiss2 = 0;
 uint BHR;
 bool sag_output = false;
 bool gag_output = false;
@@ -252,8 +254,9 @@ void stats(void){
     *out << "BTB Table [PART - B]: " << endl;
 	*out << "===============================================" << endl;
 	*out << "Total IndirectCall : "<< IndirectCall << endl;
-	*out << "MisPrediction Percet : "<< (double)(MispredBTB*100)/IndirectCall << endl;
-	*out << "BTBmiss Percet : "<< (double)(BTBmiss*100)/IndirectCall << endl;
+	*out << "     MisPrediction   BTBmiss " << endl;
+	*out << "(1):    "<< (double)(MispredBTB1*100)/IndirectCall << "      " << (double)(BTBmiss1*100)/IndirectCall << endl;
+	*out << "(2):    "<< (double)(MispredBTB2*100)/IndirectCall << "      " << (double)(BTBmiss2*100)/IndirectCall << endl;
 	*out << "===============================================" << endl;
 }
 
@@ -422,7 +425,7 @@ VOID IndirectCallAnalysis(ADDRINT pc, ADDRINT target_addr, ADDRINT next_pc){
 	}
 	if(!miss){
 		if(predicate != target_addr){
-			MispredBTB++;
+			MispredBTB1++;
 			CurrBTB_1[i].target = target_addr;
 		}
 		for(int j = i;j<(BTB_WIDTH-1);j++){
@@ -430,13 +433,43 @@ VOID IndirectCallAnalysis(ADDRINT pc, ADDRINT target_addr, ADDRINT next_pc){
 		}
 	}
 	else{
-		BTBmiss++;
-		if(target_addr != next_pc) MispredBTB++;
+		BTBmiss1++;
+		if(target_addr != next_pc) MispredBTB1++;
 		CurrBTB_1[0].valid = true;
 		CurrBTB_1[0].target = target_addr;
 		CurrBTB_1[0].tag = tag;
 		for(int j =0;j<(BTB_WIDTH-1);j++){
 			swap(j,CurrBTB_1);
+		}
+	}
+	index = (pc ^ BHR) % BTB_HEIGHT;
+	tag = pc;
+	miss = true;
+	BTB *CurrBTB_2 = BTB_2[index];
+	for(i = 0;i<BTB_WIDTH;i++){
+		if(CurrBTB_2[i].valid && (tag == CurrBTB_2[i].tag)){
+			miss = false;
+			predicate = CurrBTB_2[i].target;
+			break;
+		}
+	}
+	if(!miss){
+		if(predicate != target_addr){
+			MispredBTB2++;
+			CurrBTB_2[i].target = target_addr;
+		}
+		for(int j = i;j<(BTB_WIDTH-1);j++){
+			swap(j,CurrBTB_2);
+		}
+	}
+	else{
+		BTBmiss2++;
+		if(target_addr != next_pc) MispredBTB2++;
+		CurrBTB_2[0].valid = true;
+		CurrBTB_2[0].target = target_addr;
+		CurrBTB_2[0].tag = tag;
+		for(int j =0;j<(BTB_WIDTH-1);j++){
+			swap(j,CurrBTB_2);
 		}
 	}
 }
