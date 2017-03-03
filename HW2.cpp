@@ -37,6 +37,9 @@ UINT64 hybrid1_correct_forward = 0;
 UINT64 hybrid1_correct_backward = 0;
 UINT64 hybrid2_correct_forward = 0;
 UINT64 hybrid2_correct_backward = 0;
+UINT64 IndirectCall = 0;
+UINT64 MispredBTB = 0;
+UINT64 BTBmiss = 0;
 uint BHR;
 bool sag_output = false;
 bool gag_output = false;
@@ -51,7 +54,6 @@ struct BTB
 	bool valid;
 	ADDRINT tag;
 	ADDRINT target;
-	int status;
 };
 
 BTB **BTB_1;
@@ -247,6 +249,12 @@ void stats(void){
 	*out << "G2.";
 	stat_temp(hybrid2_correct_forward,hybrid2_correct_backward);
     *out << "===============================================" << endl;
+    *out << "BTB Table [PART - B]: " << endl;
+	*out << "===============================================" << endl;
+	*out << "Total IndirectCall : "<< IndirectCall << endl;
+	*out << "MisPrediction Percet : "<< (double)(MispredBTB*100)/IndirectCall << endl;
+	*out << "BTBmiss Percet : "<< (double)(BTBmiss*100)/IndirectCall << endl;
+	*out << "===============================================" << endl;
 }
 
 VOID StatDump(void)
@@ -383,8 +391,54 @@ VOID ConditionalBranchAnalysis(ADDRINT pc, bool branch_taken, ADDRINT target_add
 	BHR= (BHR << 1) + branch_taken;
 }
 
-VOID IndirectCallAnalysis(ADDRINT pc, ADDRINT target_addr, ADDRINT next_pc){
+void swap(int index,BTB *CurrBTB){
+	bool valid = false;
+	ADDRINT tag = 0, target = 0; 
+	valid = CurrBTB[index].valid;
+	tag = CurrBTB[index].tag;
+	target = CurrBTB[index].target;
+	CurrBTB[index].valid = CurrBTB[index+1].valid;
+	CurrBTB[index].tag = CurrBTB[index+1].tag;
+	CurrBTB[index].target = CurrBTB[index+1].target;
+	CurrBTB[index+1].valid = valid;
+	CurrBTB[index+1].tag = tag;
+	CurrBTB[index+1].target = target;
+}
 
+VOID IndirectCallAnalysis(ADDRINT pc, ADDRINT target_addr, ADDRINT next_pc){
+	IndirectCall++;
+	int index = (pc % BTB_HEIGHT);
+	ADDRINT tag = (pc >> 7);
+	int i = 0;
+	bool miss = true;
+	ADDRINT predicate = 0;
+	BTB *CurrBTB_1 = BTB_1[index];
+	for(i = 0;i<BTB_WIDTH;i++){
+		if(CurrBTB_1[i].valid && (tag == CurrBTB_1[i].tag)){
+			miss = false;
+			predicate = CurrBTB_1[i].target;
+			break;
+		}
+	}
+	if(!miss){
+		if(predicate != target_addr){
+			MispredBTB++;
+			CurrBTB_1[i].target = target_addr;
+		}
+		for(int j = i;j<(BTB_WIDTH-1);j++){
+			swap(j,CurrBTB_1);
+		}
+	}
+	else{
+		BTBmiss++;
+		if(target_addr != next_pc) MispredBTB++;
+		CurrBTB_1[0].valid = true;
+		CurrBTB_1[0].target = target_addr;
+		CurrBTB_1[0].tag = tag;
+		for(int j =0;j<(BTB_WIDTH-1);j++){
+			swap(j,CurrBTB_1);
+		}
+	}
 }
 /* Instruction instrumentation routine */
 VOID Instruction(INS ins, VOID *v)
@@ -441,10 +495,9 @@ int main(int argc, char *argv[])
 	}
 	for(int i=0 ; i < BTB_HEIGHT ; i++){
 		for(int j=0 ; j < BTB_WIDTH ; j++){
-			BTB_1[i][j].valid = BTB_2[i][j].valid = 0;
+			BTB_1[i][j].valid = BTB_2[i][j].valid = false;
 			BTB_1[i][j].tag = BTB_2[i][j].tag = 0;
 			BTB_1[i][j].target = BTB_2[i][j].target  = 0;
-			BTB_1[i][j].status = BTB_2[i][j].status = 0;
 		}
 	}
 	if (!fileName.empty())
