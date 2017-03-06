@@ -4,7 +4,7 @@
 #include "pin.H"
 #include <cstdlib>
 /* Macro and type definitions */
-#define BILLION 10000//1000000000
+#define BILLION 1000000000
 #define WIDTH 512
 #define BHT_W 1024
 #define BTB_HEIGHT 128
