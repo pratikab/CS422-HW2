@@ -335,37 +335,27 @@ void hybrid1Predictor(bool branch_taken,bool forward){
 void hybrid2Predictor(bool branch_taken,bool forward){
 	bool predicate = false;
 	int offset = (BHR%WIDTH);
-	bool SG_pred = SG_HYBRID[offset].prediction();
-	bool Gg_pred = Gg_HYBRID[offset].prediction();
-	bool gS_pred = Gg_HYBRID[offset].prediction();
-	/* For TTT i.e all tables return true and FFF selecting SAg output*/
-	if(SG_pred){
-		if(Gg_pred){
-			predicate = sag_output;
-		}
-		else{
-			if(gS_pred)predicate = gshare_output;
-			else predicate = sag_output;
-		} 
+/*Three counters given we select majority*/
+	if(SG_HYBRID[offset].prediction()){
+		if(Gg_HYBRID[offset].prediction()) predicate = gshare_output;
+		else predicate = gag_output;
 	}
 	else{
-		if(Gg_pred) predicate = gag_output;
-		else {
-			if(gS_pred) predicate = gshare_output;
-			else predicate = sag_output;
-		} 
+		if(gS_HYBRID[offset].prediction()) predicate = sag_output;
+		else predicate = gshare_output;
 	}
+/*Update counters if both are not same*/
 	if(sag_output != gag_output){
-		if(branch_taken == sag_output) SG_HYBRID[offset].Update(true);
+		if(branch_taken == gag_output) SG_HYBRID[offset].Update(true);
 		else SG_HYBRID[offset].Update(false);
 	}
-	if(sag_output != gshare_output){
-		if(branch_taken == gshare_output) gS_HYBRID[offset].Update(true);
-		else gS_HYBRID[offset].Update(false);
-	}
 	if(gag_output != gshare_output){
-		if(branch_taken == gag_output) Gg_HYBRID[offset].Update(true);
+		if(branch_taken == gshare_output) Gg_HYBRID[offset].Update(true);
 		else Gg_HYBRID[offset].Update(false);
+	}
+	if(sag_output != gshare_output){
+		if(branch_taken == sag_output) gS_HYBRID[offset].Update(true);
+		else gS_HYBRID[offset].Update(false);
 	}
 	if(( predicate == branch_taken)&&(forward)) hybrid2_correct_forward++;
 	else if((predicate == branch_taken)&&(!forward)) hybrid2_correct_backward++;
